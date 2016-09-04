@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Shreyas Joshi"
+date: "September 4, 2016"
+output: html_document
+---
+
+
+**Setting up** 
+- Load the data after downloading it from the links given in the course assignment. Necessary libraries are also 
+  loaded along with the data.
+- The training and test data are loaded onto two separate variables.
+
+
+```{r, eval=FALSE}
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(rattle)
+
+setwd("~/learning/pml")
+
+trainingdata <- read.csv("pml-training.csv")
+testingdata <- read.csv("pml-testing.csv")
+
+```
+
+**Cross Validation and cleaning**
+
+Create Training and Test data sets using create data partition method. The test data created at this point will be used as a validation data set prior to running it on our test set.
+
+Next, all the time and data variables are removed, since they are not required for this problem.
+```{r,eval=FALSE}
+
+inTrain <- createDataPartition(y=trainingdata$classe,
+                               p=0.7, list=FALSE)
+training <- trainingdata[inTrain,]
+testing <- trainingdata[-inTrain,]
+
+# remove time and date variables
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+
+
+# remove NA's
+
+rem_NA <- sapply(colnames(training), function(x) if(sum(is.na(training[, x])) > 0.8*nrow(training)){return(T)}else{return(F)})
+training <- training[, !rem_NA]
+```
+**Decision tree Model**
+- Fit a recursive partitioning method i.e. decision tree to the classe variable against all other predictors.
+- Plot the accuracy of the model
+- Predict classe for hold out data
+
+```{r, eval=FALSE}
+dTree <- train(training$classe ~ ., method="rpart", data=training)
+dTree$finalModel
+plot(dTree)
+
+# prediction for validation data
+dTreePred <- predict(dTree, newdata=testing)
+dTreeConMat <- confusionMatrix(dTreePred, testing$classe)
+dTreeConMat
+
+```
+The decision tree model has low accuracy.
+
+**Random forest** 
+
+- Train a random forest classifier with a k-fold cross validation(say k =10)
+- Fit the trained model on the test data 
+- Generate the confusion matrix
+
+```{r,eval=FALSE}
+rfmod <- train(training$classe ~ ., method = "rf", data = training, importance = T, trControl = trainControl(method = "cv", number = 10))
+rfmod
+plot(rfmod)
+
+rfpred <- predict(rfmod, newdata=testing)
+rfConMat <- confusionMatrix(rfpred, testing$classe)
+rfConMat
+
+rfAccuracy = rfConMat$overall[[1]]
+
+# Model accuracy
+percent(rfAccuracy)
+
+```
+**Boosting**
+- Fit a boosting model using the gradient boosting method. Use same k for cross validation as a comparison with Random Forest
+- Fit the trained model on test data and obtain confusion matrix
+
+```{r, eval=FALSE}
+boostmod <- train(training$classe ~ ., method = "gbm", data = training, verbose = F, trControl = trainControl(method = "cv", number = 10))
+
+boostmod
+plot(boostmod)
+
+boostpred <- predict(boostmod, newdata=testing)
+boostConMat <- confusionMatrix(boostpred, testing$classe)
+boostConMat
+
+boostAccuracy = boostConMat$overall[[1]]
+percent(boostAccuracy)
+```
+
+It appears that among the three models, the random forest model does best on the test data set and hence the predictions are made using random forest.
+
+```{r, eval=FALSE}
+
+# Final prediction 
+
+prediction = predict(rfmod, testingdata)
+prediction = as.character(prediction)
+
+# write prediction files
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("./pml/problem_id_", i, ".txt")
+    write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  }
+}
+pml_write_files(prediction)
+
+```
+
